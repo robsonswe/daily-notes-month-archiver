@@ -12,6 +12,7 @@ import {
 interface ArchiverSettings {
 	dailyNotesFolder: string;
 	dateFormat: string;
+	minAgeDays: number;
 	autoRunOnStartup: boolean;
 	lastRunDate: string | null;
 }
@@ -19,6 +20,7 @@ interface ArchiverSettings {
 const DEFAULT_SETTINGS: ArchiverSettings = {
 	dailyNotesFolder: "Agenda",
 	dateFormat: "DD-MM-YY",
+	minAgeDays: 1,
 	autoRunOnStartup: true,
 	lastRunDate: null,
 };
@@ -71,7 +73,7 @@ export default class DailyArchiverPlugin extends Plugin {
 	}
 
 	async archiveNotes(showNotice: boolean): Promise<number> {
-		console.log(`Daily Notes Month Archiver: Archiving from folder: "${this.settings.dailyNotesFolder}" with format: "${this.settings.dateFormat}"`);
+		console.log(`Daily Notes Month Archiver: Archiving from folder: "${this.settings.dailyNotesFolder}" with format: "${this.settings.dateFormat}", min age: ${this.settings.minAgeDays} days`);
 		const folder = this.app.vault.getAbstractFileByPath(
 			this.settings.dailyNotesFolder,
 		);
@@ -82,7 +84,11 @@ export default class DailyArchiverPlugin extends Plugin {
 			return 0;
 		}
 
-		const today = moment().startOf("day");
+		// Calculate the threshold date: files must be BEFORE this date
+		// If minAgeDays is 1, threshold is the start of today.
+		// If minAgeDays is 30, threshold is 29 days before today.
+		const thresholdDate = moment().startOf("day").subtract(this.settings.minAgeDays - 1, "days");
+		console.log(`Daily Notes Month Archiver: Threshold date is ${thresholdDate.format("YYYY-MM-DD")}. Files before this will be archived.`);
 
 		// Only top-level markdown files
 		const files = folder.children.filter(
@@ -102,7 +108,7 @@ export default class DailyArchiverPlugin extends Plugin {
 			);
 			if (!parsed.isValid()) continue;
 
-			if (parsed.isBefore(today)) {
+			if (parsed.isBefore(thresholdDate)) {
 				monthFolders.add(parsed.format("MM-YY"));
 			}
 		}
@@ -130,7 +136,7 @@ export default class DailyArchiverPlugin extends Plugin {
 			);
 			if (!parsed.isValid()) continue;
 
-			if (parsed.isBefore(today)) {
+			if (parsed.isBefore(thresholdDate)) {
 				const monthYear = parsed.format("MM-YY");
 				const newPath = `${this.settings.dailyNotesFolder}/${monthYear}/${file.name}`;
 
@@ -199,6 +205,22 @@ class ArchiverSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.dateFormat = value.trim();
 						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Minimum age (days)")
+			.setDesc("Only archive files older than this many days (1 = everything except today)")
+			.addText((text) =>
+				text
+					.setPlaceholder("1")
+					.setValue(this.plugin.settings.minAgeDays.toString())
+					.onChange(async (value) => {
+						const num = parseInt(value);
+						if (!isNaN(num) && num >= 1) {
+							this.plugin.settings.minAgeDays = num;
+							await this.plugin.saveSettings();
+						}
 					}),
 			);
 
