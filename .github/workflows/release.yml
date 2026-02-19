@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'manifest.json'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for version comparison
+
+      - name: Compare versions
+        id: version_check
+        run: |
+          CURR_VER=$(jq -r '.version' manifest.json)
+          PREV_VER=$(git show HEAD^1:manifest.json | jq -r '.version' 2>/dev/null || echo "0.0.0")
+          
+          # Use node to compare versions with semver rules
+          IS_GREATER=$(node -e "const semver = require('semver'); console.log(semver.gt('$CURR_VER', '$PREV_VER'))")
+          
+          echo "current_version=$CURR_VER" >> $GITHUB_OUTPUT
+          echo "is_greater=$IS_GREATER" >> $GITHUB_OUTPUT
+          echo "Comparing $CURR_VER to $PREV_VER: Is Greater? $IS_GREATER"
+
+      - name: Build and Release
+        if: steps.version_check.outputs.is_greater == 'true'
+        run: |
+          npm install
+          npm run build
+          zip daily-notes-month-archiver.zip main.js manifest.json
+
+      - name: Create Tag
+        if: steps.version_check.outputs.is_greater == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version_check.outputs.current_version }}
+          git push origin ${{ steps.version_check.outputs.current_version }}
+
+      - name: Create GitHub Release
+        if: steps.version_check.outputs.is_greater == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version_check.outputs.current_version }}
+          name: ${{ steps.version_check.outputs.current_version }}
+          files: |
+            main.js
+            manifest.json
+            daily-notes-month-archiver.zip
+          generate_release_notes: true
