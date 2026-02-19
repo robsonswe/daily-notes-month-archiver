@@ -41,7 +41,6 @@ export default class DailyArchiverPlugin extends Plugin {
 
 		if (this.settings.autoRunOnStartup) {
 			this.app.workspace.onLayoutReady(async () => {
-				console.log("Daily Notes Month Archiver: Layout ready, checking for notes to archive...");
 				await this.runIfNeeded();
 			});
 		}
@@ -49,22 +48,18 @@ export default class DailyArchiverPlugin extends Plugin {
 
 	private async runIfNeeded() {
 		const today = moment().format("YYYY-MM-DD");
-		console.log(`Daily Notes Month Archiver: Checking run. Today: ${today}, Last run: ${this.settings.lastRunDate}`);
 
 		if (this.settings.lastRunDate === today) {
-			console.log("Daily Notes Month Archiver: Already ran successfully today. Skipping.");
 			return;
 		}
 
 		try {
 			const movedCount = await this.archiveNotes(false);
-			console.log(`Daily Notes Month Archiver: Auto-run finished. Moved ${movedCount} files.`);
 			
 			if (movedCount > 0) {
 				new Notice(`Auto-archived ${movedCount} daily notes.`);
 			}
 
-			// Only update lastRunDate if we successfully reached this point.
 			this.settings.lastRunDate = today;
 			await this.saveSettings();
 		} catch (error) {
@@ -73,28 +68,22 @@ export default class DailyArchiverPlugin extends Plugin {
 	}
 
 	async archiveNotes(showNotice: boolean): Promise<number> {
-		console.log(`Daily Notes Month Archiver: Archiving from folder: "${this.settings.dailyNotesFolder}" with format: "${this.settings.dateFormat}", min age: ${this.settings.minAgeDays} days`);
 		const folder = this.app.vault.getAbstractFileByPath(
 			this.settings.dailyNotesFolder,
 		);
 
 		if (!(folder instanceof TFolder)) {
-			console.log("Daily Notes Month Archiver: Target folder not found.");
 			if (showNotice) new Notice("Daily notes folder not found.");
 			return 0;
 		}
 
-		// Calculate the threshold date: files must be BEFORE this date
-		// If minAgeDays is 1, threshold is the start of today.
-		// If minAgeDays is 30, threshold is 29 days before today.
-		const thresholdDate = moment().startOf("day").subtract(this.settings.minAgeDays - 1, "days");
-		console.log(`Daily Notes Month Archiver: Threshold date is ${thresholdDate.format("YYYY-MM-DD")}. Files before this will be archived.`);
+		const thresholdDate = moment()
+			.startOf("day")
+			.subtract(this.settings.minAgeDays - 1, "days");
 
-		// Only top-level markdown files
 		const files = folder.children.filter(
 			(f) => f instanceof TFile && f.parent?.path === folder.path,
 		) as TFile[];
-		console.log(`Daily Notes Month Archiver: Found ${files.length} top-level files in folder.`);
 
 		const monthFolders = new Set<string>();
 
@@ -113,13 +102,9 @@ export default class DailyArchiverPlugin extends Plugin {
 			}
 		}
 
-		console.log(`Daily Notes Month Archiver: Identified ${monthFolders.size} month-year folders to process.`);
-
-		// Create month folders if needed
 		for (const monthYear of monthFolders) {
 			const path = `${this.settings.dailyNotesFolder}/${monthYear}`;
 			if (!this.app.vault.getAbstractFileByPath(path)) {
-				console.log(`Daily Notes Month Archiver: Creating folder "${path}"`);
 				await this.app.vault.createFolder(path);
 			}
 		}
@@ -140,7 +125,12 @@ export default class DailyArchiverPlugin extends Plugin {
 				const monthYear = parsed.format("MM-YY");
 				const newPath = `${this.settings.dailyNotesFolder}/${monthYear}/${file.name}`;
 
-				console.log(`Daily Notes Month Archiver: Moving "${file.path}" to "${newPath}"`);
+				// Check if file already exists in destination
+				const existingFile = this.app.vault.getAbstractFileByPath(newPath);
+				if (existingFile instanceof TFile) {
+					await this.app.vault.delete(existingFile);
+				}
+
 				await this.app.fileManager.renameFile(file, newPath);
 				movedCount++;
 			}
