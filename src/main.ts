@@ -39,6 +39,7 @@ export default class DailyArchiverPlugin extends Plugin {
 
 		if (this.settings.autoRunOnStartup) {
 			this.app.workspace.onLayoutReady(async () => {
+				console.log("Daily Notes Month Archiver: Layout ready, checking for notes to archive...");
 				await this.runIfNeeded();
 			});
 		}
@@ -46,23 +47,39 @@ export default class DailyArchiverPlugin extends Plugin {
 
 	private async runIfNeeded() {
 		const today = moment().format("YYYY-MM-DD");
+		console.log(`Daily Notes Month Archiver: Checking run. Today: ${today}, Last run: ${this.settings.lastRunDate}`);
 
-		if (this.settings.lastRunDate === today) return;
+		if (this.settings.lastRunDate === today) {
+			console.log("Daily Notes Month Archiver: Already ran successfully today. Skipping.");
+			return;
+		}
 
-		await this.archiveNotes(false);
+		try {
+			const movedCount = await this.archiveNotes(false);
+			console.log(`Daily Notes Month Archiver: Auto-run finished. Moved ${movedCount} files.`);
+			
+			if (movedCount > 0) {
+				new Notice(`Auto-archived ${movedCount} daily notes.`);
+			}
 
-		this.settings.lastRunDate = today;
-		await this.saveSettings();
+			// Only update lastRunDate if we successfully reached this point.
+			this.settings.lastRunDate = today;
+			await this.saveSettings();
+		} catch (error) {
+			console.error("Daily Notes Month Archiver: Auto-run failed", error);
+		}
 	}
 
-	async archiveNotes(showNotice: boolean) {
+	async archiveNotes(showNotice: boolean): Promise<number> {
+		console.log(`Daily Notes Month Archiver: Archiving from folder: "${this.settings.dailyNotesFolder}" with format: "${this.settings.dateFormat}"`);
 		const folder = this.app.vault.getAbstractFileByPath(
 			this.settings.dailyNotesFolder,
 		);
 
 		if (!(folder instanceof TFolder)) {
+			console.log("Daily Notes Month Archiver: Target folder not found.");
 			if (showNotice) new Notice("Daily notes folder not found.");
-			return;
+			return 0;
 		}
 
 		const today = moment().startOf("day");
@@ -71,6 +88,7 @@ export default class DailyArchiverPlugin extends Plugin {
 		const files = folder.children.filter(
 			(f) => f instanceof TFile && f.parent?.path === folder.path,
 		) as TFile[];
+		console.log(`Daily Notes Month Archiver: Found ${files.length} top-level files in folder.`);
 
 		const monthFolders = new Set<string>();
 
@@ -89,14 +107,18 @@ export default class DailyArchiverPlugin extends Plugin {
 			}
 		}
 
+		console.log(`Daily Notes Month Archiver: Identified ${monthFolders.size} month-year folders to process.`);
+
 		// Create month folders if needed
 		for (const monthYear of monthFolders) {
 			const path = `${this.settings.dailyNotesFolder}/${monthYear}`;
 			if (!this.app.vault.getAbstractFileByPath(path)) {
+				console.log(`Daily Notes Month Archiver: Creating folder "${path}"`);
 				await this.app.vault.createFolder(path);
 			}
 		}
 
+		let movedCount = 0;
 		// Move files
 		for (const file of files) {
 			if (!file.name.endsWith(".md")) continue;
@@ -112,13 +134,21 @@ export default class DailyArchiverPlugin extends Plugin {
 				const monthYear = parsed.format("MM-YY");
 				const newPath = `${this.settings.dailyNotesFolder}/${monthYear}/${file.name}`;
 
+				console.log(`Daily Notes Month Archiver: Moving "${file.path}" to "${newPath}"`);
 				await this.app.fileManager.renameFile(file, newPath);
+				movedCount++;
 			}
 		}
 
 		if (showNotice) {
-			new Notice("Daily notes archived successfully.");
+			if (movedCount > 0) {
+				new Notice(`Successfully archived ${movedCount} daily notes.`);
+			} else {
+				new Notice("No daily notes to archive.");
+			}
 		}
+
+		return movedCount;
 	}
 
 	async loadSettings() {
