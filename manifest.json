@@ -1,11 +1,12 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
-	"isDesktopOnly": false
+  "id": "daily-notes-month-archiver",
+  "name": "Daily Notes Month Archiver",
+  "version": "1.0.0",
+  "minAppVersion": "1.5.0",
+  "description": "Automatically archives past daily notes into MM-YY folders.",
+  "author": "robsonswe",
+  "isDesktopOnly": false,
+  "fundingUrl": {
+    "GitHub Sponsor": "https://github.com/sponsors/robsonswe"
+  }
 }

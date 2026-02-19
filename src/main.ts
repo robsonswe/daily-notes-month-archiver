@@ -1,80 +1,132 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings";
+import {
+	App,
+	Plugin,
+	PluginSettingTab,
+	Setting,
+	TFile,
+	TFolder,
+	moment,
+	Notice,
+} from "obsidian";
 
-// Remember to rename these classes and interfaces!
+interface ArchiverSettings {
+	dailyNotesFolder: string;
+	dateFormat: string;
+	autoRunOnStartup: boolean;
+	lastRunDate: string | null;
+}
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+const DEFAULT_SETTINGS: ArchiverSettings = {
+	dailyNotesFolder: "Agenda",
+	dateFormat: "DD-MM-YY",
+	autoRunOnStartup: true,
+	lastRunDate: null,
+};
+
+export default class DailyArchiverPlugin extends Plugin {
+	settings: ArchiverSettings;
 
 	async onload() {
 		await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		this.addRibbonIcon('dice', 'Sample', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status bar text');
-
-		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
-			id: 'open-modal-simple',
-			name: 'Open modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'replace-selected',
-			name: 'Replace selected content',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				editor.replaceSelection('Sample editor command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-modal-complex',
-			name: 'Open modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-				return false;
-			}
+			id: "archive-daily-notes",
+			name: "Archive past daily notes into month folders",
+			callback: () => this.archiveNotes(true),
 		});
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+		this.addSettingTab(new ArchiverSettingTab(this.app, this));
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			new Notice("Click");
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-
+		if (this.settings.autoRunOnStartup) {
+			this.app.workspace.onLayoutReady(() => {
+				this.runIfNeeded();
+			});
+		}
 	}
 
-	onunload() {
+	private async runIfNeeded() {
+		const today = moment().format("YYYY-MM-DD");
+
+		if (this.settings.lastRunDate === today) return;
+
+		await this.archiveNotes(false);
+
+		this.settings.lastRunDate = today;
+		await this.saveSettings();
+	}
+
+	async archiveNotes(showNotice: boolean) {
+		const folder = this.app.vault.getAbstractFileByPath(
+			this.settings.dailyNotesFolder,
+		);
+
+		if (!(folder instanceof TFolder)) {
+			if (showNotice) new Notice("Daily notes folder not found.");
+			return;
+		}
+
+		const today = moment().startOf("day");
+
+		// Only top-level markdown files
+		const files = folder.children.filter(
+			(f) => f instanceof TFile && f.parent?.path === folder.path,
+		) as TFile[];
+
+		const monthFolders = new Set<string>();
+
+		for (const file of files) {
+			if (!file.name.endsWith(".md")) continue;
+
+			const parsed = moment(
+				file.basename,
+				this.settings.dateFormat,
+				true,
+			);
+			if (!parsed.isValid()) continue;
+
+			if (parsed.isBefore(today)) {
+				monthFolders.add(parsed.format("MM-YY"));
+			}
+		}
+
+		// Create month folders if needed
+		for (const monthYear of monthFolders) {
+			const path = `${this.settings.dailyNotesFolder}/${monthYear}`;
+			if (!this.app.vault.getAbstractFileByPath(path)) {
+				await this.app.vault.createFolder(path);
+			}
+		}
+
+		// Move files
+		for (const file of files) {
+			if (!file.name.endsWith(".md")) continue;
+
+			const parsed = moment(
+				file.basename,
+				this.settings.dateFormat,
+				true,
+			);
+			if (!parsed.isValid()) continue;
+
+			if (parsed.isBefore(today)) {
+				const monthYear = parsed.format("MM-YY");
+				const newPath = `${this.settings.dailyNotesFolder}/${monthYear}/${file.name}`;
+
+				await this.app.fileManager.renameFile(file, newPath);
+			}
+		}
+
+		if (showNotice) {
+			new Notice("Daily notes archived successfully.");
+		}
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MyPluginSettings>);
+		this.settings = Object.assign(
+			{},
+			DEFAULT_SETTINGS,
+			await this.loadData(),
+		);
 	}
 
 	async saveSettings() {
@@ -82,18 +134,56 @@ export default class MyPlugin extends Plugin {
 	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
+class ArchiverSettingTab extends PluginSettingTab {
+	plugin: DailyArchiverPlugin;
+
+	constructor(app: App, plugin: DailyArchiverPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
 	}
 
-	onOpen() {
-		let {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
+	display(): void {
+		const { containerEl } = this;
+		containerEl.empty();
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
+		new Setting(containerEl)
+			.setName("Daily notes folder")
+			.setDesc("Folder where daily notes are stored")
+			.addText((text) =>
+				text
+					.setPlaceholder("Agenda")
+					.setValue(this.plugin.settings.dailyNotesFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.dailyNotesFolder = value.trim();
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Date format")
+			.setDesc("Format used in daily note filenames")
+			.addText((text) =>
+				text
+					.setPlaceholder("DD-MM-YY")
+					.setValue(this.plugin.settings.dateFormat)
+					.onChange(async (value) => {
+						this.plugin.settings.dateFormat = value.trim();
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Run automatically on startup")
+			.setDesc(
+				"Archives past daily notes once per day when Obsidian starts.",
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.autoRunOnStartup)
+					.onChange(async (value) => {
+						this.plugin.settings.autoRunOnStartup = value;
+						await this.plugin.saveSettings();
+					}),
+			);
 	}
 }

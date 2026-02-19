@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
+	"name": "daily-notes-month-archiver",
 	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "Automatically archives past daily notes into MM-YY folders.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
