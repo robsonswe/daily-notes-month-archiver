@@ -8,9 +8,11 @@ This plugin helps keep your daily notes folder clean by moving notes from previo
 
 - **Automatic Archiving**: Moves past daily notes into subfolders named like `02-26` (February 2026).
 - **Auto-Run**: Optionally archives your notes once per day when Obsidian starts.
+- **Smart Overwrite**: If a note already exists in the destination folder, it will be overwritten by the newer version during archiving.
 - **Customizable**:
     - **Daily notes folder**: Define where your daily notes are kept.
     - **Date format**: Support for custom date formats in filenames (e.g., `YYYY-MM-DD`, `DD-MM-YY`).
+    - **Minimum age (days)**: Only archive files older than a specific number of days (default is 1).
 
 ## How to use
 
@@ -18,8 +20,9 @@ This plugin helps keep your daily notes folder clean by moving notes from previo
 2. Go to **Settings → Daily Notes Month Archiver**.
 3. Set your **Daily notes folder** (e.g., `Agenda`).
 4. Set the **Date format** to match your files (e.g., `DD-MM-YY`).
-5. (Optional) Enable **Run automatically on startup**.
-6. You can also trigger the archiving manually via the command palette: **Archive past daily notes into month folders**.
+5. Set the **Minimum age (days)** (e.g., `1` to archive everything except today, or `30` to keep the last month's notes in the main folder).
+6. (Optional) Enable **Run automatically on startup**.
+7. You can also trigger the archiving manually via the command palette: **Archive past daily notes into month folders**.
 
 ## Installation
 
