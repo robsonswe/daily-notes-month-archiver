@@ -38,8 +38,8 @@ export default class DailyArchiverPlugin extends Plugin {
 		this.addSettingTab(new ArchiverSettingTab(this.app, this));
 
 		if (this.settings.autoRunOnStartup) {
-			this.app.workspace.onLayoutReady(() => {
-				this.runIfNeeded();
+			this.app.workspace.onLayoutReady(async () => {
+				await this.runIfNeeded();
 			});
 		}
 	}
@@ -125,7 +125,7 @@ export default class DailyArchiverPlugin extends Plugin {
 		this.settings = Object.assign(
 			{},
 			DEFAULT_SETTINGS,
-			await this.loadData(),
+			(await this.loadData()) as Partial<ArchiverSettings>,
 		);
 	}
 
@@ -164,7 +164,7 @@ class ArchiverSettingTab extends PluginSettingTab {
 			.setDesc("Format used in daily note filenames")
 			.addText((text) =>
 				text
-					.setPlaceholder("DD-MM-YY")
+					.setPlaceholder("Enter date format")
 					.setValue(this.plugin.settings.dateFormat)
 					.onChange(async (value) => {
 						this.plugin.settings.dateFormat = value.trim();
@@ -173,7 +173,7 @@ class ArchiverSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Run automatically on startup")
+			.setName("Automatic run on startup")
 			.setDesc(
 				"Archives past daily notes once per day when Obsidian starts.",
 			)
